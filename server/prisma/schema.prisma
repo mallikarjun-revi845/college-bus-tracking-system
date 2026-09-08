@@ -1,0 +1,254 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - Base authentication
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  phone     String?
+  passwordHash String
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  student   Student?
+  driver    Driver?
+
+  @@index([email])
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  DRIVER
+  STUDENT
+}
+
+// Student profile
+model Student {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  studentId String   @unique
+  department String?
+  year      Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("students")
+}
+
+// Driver profile
+model Driver {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  licenseNumber   String   @unique
+  licenseExpiry   DateTime?
+  status          DriverStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedBus     Bus?     @relation("AssignedDriver")
+  trips           Trip[]   @relation("DriverTrips")
+
+  @@index([userId])
+  @@index([status])
+  @@map("drivers")
+}
+
+enum DriverStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+// Bus information
+model Bus {
+  id                  String   @id @default(cuid())
+  busNumber           String   @unique
+  registrationNumber  String   @unique
+  capacity            Int
+  status              BusStatus @default(ACTIVE)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  assignedDriverId    String?  @unique
+  assignedDriver      Driver?  @relation("AssignedDriver", fields: [assignedDriverId], references: [id], onDelete: SetNull)
+  assignedRouteId     String?
+  assignedRoute       Route?   @relation("BusRoute", fields: [assignedRouteId], references: [id], onDelete: SetNull)
+  
+  trips               Trip[]   @relation("BusTrips")
+  locations           BusLocation[] @relation("BusLocations")
+
+  @@index([status])
+  @@index([active])
+  @@index([assignedDriverId])
+  @@index([assignedRouteId])
+  @@map("buses")
+}
+
+enum BusStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+// Route information
+model Route {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  buses       Bus[]    @relation("BusRoute")
+  stops       RouteStop[] @relation("RouteStops")
+  trips       Trip[]   @relation("RouteTrips")
+
+  @@index([active])
+  @@map("routes")
+}
+
+// Physical bus stop
+model BusStop {
+  id        String   @id @default(cuid())
+  name      String
+  latitude  Float
+  longitude Float
+  address   String?
+  city      String?
+  zipcode   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  routes    RouteStop[] @relation("RouteStops")
+
+  @@index([city])
+  @@map("bus_stops")
+}
+
+// Join table: Route to Stop with ordering
+model RouteStop {
+  id                String   @id @default(cuid())
+  routeId           String
+  busStopId         String
+  stopOrder         Int
+  estimatedMinutes  Int?     // Time from previous stop
+  estimatedDistance Float?   // Distance from previous stop in km
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  route             Route    @relation("RouteStops", fields: [routeId], references: [id], onDelete: Cascade)
+  busStop           BusStop  @relation("RouteStops", fields: [busStopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stopOrder])
+  @@index([routeId])
+  @@index([busStopId])
+  @@map("route_stops")
+}
+
+// Bus trip record
+model Trip {
+  id                  String   @id @default(cuid())
+  busId               String
+  driverId            String
+  routeId             String
+  status              TripStatus @default(NOT_STARTED)
+  plannedStartTime    DateTime?
+  actualStartTime     DateTime?
+  estimatedEndTime    DateTime?
+  actualEndTime       DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  bus                 Bus      @relation("BusTrips", fields: [busId], references: [id], onDelete: Cascade)
+  driver              Driver   @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Cascade)
+  route               Route    @relation("RouteTrips", fields: [routeId], references: [id], onDelete: Cascade)
+  locations           BusLocation[] @relation("TripLocations")
+  events              TripEvent[] @relation("TripEvents")
+
+  @@index([busId])
+  @@index([driverId])
+  @@index([routeId])
+  @@index([status])
+  @@index([actualStartTime])
+  @@map("trips")
+}
+
+enum TripStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Bus location tracking
+model BusLocation {
+  id          String   @id @default(cuid())
+  busId       String
+  tripId      String?
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  altitude    Float?
+  speed       Float?
+  heading     Float?
+  recordedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  // Relations
+  bus         Bus      @relation("BusLocations", fields: [busId], references: [id], onDelete: Cascade)
+  trip        Trip?    @relation("TripLocations", fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([busId])
+  @@index([tripId])
+  @@index([recordedAt])
+  @@map("bus_locations")
+}
+
+// Trip event (arrived at stop, departed, etc)
+model TripEvent {
+  id        String   @id @default(cuid())
+  tripId    String
+  stopId    String?
+  eventType TripEventType
+  notes     String?
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  // Relations
+  trip      Trip     @relation("TripEvents", fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([timestamp])
+  @@map("trip_events")
+}
+
+enum TripEventType {
+  ARRIVED
+  DEPARTED
+  SKIPPED
+}
