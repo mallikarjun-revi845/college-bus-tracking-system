@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(student)
+  phone     String   @default("")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  buses     Bus[]
+  trips     Trip[]
+}
+
+enum Role {
+  admin
+  driver
+  student
+}
+
+model Route {
+  id             String   @id @default(cuid())
+  name           String
+  code           String   @unique
+  startLocation  String
+  endLocation    String
+  distanceKm     Float    @default(0)
+  durationMinutes Int     @default(0)
+  active         Boolean  @default(true)
+  stops          Stop[]
+  buses          Bus[]
+  trips          Trip[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Stop {
+  id          String   @id @default(cuid())
+  routeId     String
+  route       Route    @relation(fields: [routeId], references: [id])
+  name        String
+  latitude    Float
+  longitude   Float
+  address     String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Bus {
+  id                 String   @id @default(cuid())
+  registrationNumber String   @unique
+  name               String
+  capacity           Int
+  status             BusStatus @default(active)
+  description        String   @default("")
+  routeId            String?
+  route              Route?   @relation(fields: [routeId], references: [id])
+  driverId           String?
+  driver             User?    @relation(fields: [driverId], references: [id])
+  lastLocationLat    Float?
+  lastLocationLng    Float?
+  lastLocationAt     DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  trips              Trip[]
+}
+
+enum BusStatus {
+  active
+  inactive
+  maintenance
+}
+
+model Trip {
+  id            String      @id @default(cuid())
+  busId         String
+  bus           Bus         @relation(fields: [busId], references: [id])
+  routeId       String?
+  route         Route?      @relation(fields: [routeId], references: [id])
+  driverId      String?
+  driver        User?       @relation(fields: [driverId], references: [id])
+  startTime     DateTime?
+  endTime       DateTime?
+  status        TripStatus  @default(scheduled)
+  distanceKm    Float       @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+enum TripStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+}
