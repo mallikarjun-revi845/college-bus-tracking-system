@@ -18,8 +18,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  buses     Bus[]
-  trips     Trip[]
+  driver     Driver?
+  student    Student?
+  buses      Bus[]
+  trips      Trip[]
+  notifications Notification[]
 }
 
 enum Role {
@@ -29,31 +32,49 @@ enum Role {
 }
 
 model Route {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   name           String
-  code           String   @unique
+  code           String    @unique
   startLocation  String
   endLocation    String
-  distanceKm     Float    @default(0)
-  durationMinutes Int     @default(0)
-  active         Boolean  @default(true)
+  distanceKm     Float     @default(0)
+  durationMinutes Int      @default(0)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // relations
   stops          Stop[]
+  routeStops     RouteStop[]
   buses          Bus[]
   trips          Trip[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
 }
 
 model Stop {
   id          String   @id @default(cuid())
-  routeId     String
-  route       Route    @relation(fields: [routeId], references: [id])
   name        String
   latitude    Float
   longitude   Float
   address     String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // relations
+  routeStops  RouteStop[]
+}
+
+model RouteStop {
+  id               String   @id @default(cuid())
+  routeId          String
+  stopId           String
+  stopOrder        Int
+  scheduledArrival DateTime?
+
+  route            Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop             Stop     @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stopOrder])
+  @@index([routeId, stopOrder])
 }
 
 model Bus {
@@ -64,15 +85,20 @@ model Bus {
   status             BusStatus @default(active)
   description        String   @default("")
   routeId            String?
-  route              Route?   @relation(fields: [routeId], references: [id])
   driverId           String?
-  driver             User?    @relation(fields: [driverId], references: [id])
   lastLocationLat    Float?
   lastLocationLng    Float?
   lastLocationAt     DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  route              Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  driver             User?    @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  assignments        Assignment[]
   trips              Trip[]
+  locations          BusLocation[]
+
+  @@index([registrationNumber])
 }
 
 enum BusStatus {
@@ -81,20 +107,72 @@ enum BusStatus {
   maintenance
 }
 
+model Driver {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  licenseNumber String?
+  licenseExpiry DateTime?
+  contactNumber String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments  Assignment[]
+  trips        Trip[]  @relation("DriverTrips")
+}
+
+model Student {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  studentId    String   @unique
+  department   String?
+  year         Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Assignment {
+  id          String   @id @default(cuid())
+  busId       String
+  driverId    String
+  routeId     String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  status      AssignmentStatus @default(active)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bus         Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  route       Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([busId, driverId, routeId])
+}
+
+enum AssignmentStatus {
+  active
+  inactive
+  pending
+}
+
 model Trip {
   id            String      @id @default(cuid())
   busId         String
-  bus           Bus         @relation(fields: [busId], references: [id])
   routeId       String?
-  route         Route?      @relation(fields: [routeId], references: [id])
   driverId      String?
-  driver        User?       @relation(fields: [driverId], references: [id])
   startTime     DateTime?
   endTime       DateTime?
   status        TripStatus  @default(scheduled)
   distanceKm    Float       @default(0)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  bus           Bus         @relation(fields: [busId], references: [id], onDelete: Cascade)
+  route         Route?      @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  driver        Driver?     @relation(fields: [driverId], references: [id], onDelete: SetNull, name: "DriverTrips")
+  locations     BusLocation[]
 }
 
 enum TripStatus {
@@ -102,4 +180,32 @@ enum TripStatus {
   in_progress
   completed
   cancelled
+}
+
+model BusLocation {
+  id        String   @id @default(cuid())
+  tripId    String?
+  busId     String
+  latitude  Float
+  longitude Float
+  speedKmh  Float?   @default(0)
+  accuracy  Float?   @default(0)
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  trip      Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  bus       Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
+
+  @@index([busId, timestamp])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  recipientId String
+  message    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  recipient  User     @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  @@index([recipientId, createdAt])
 }

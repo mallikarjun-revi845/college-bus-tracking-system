@@ -23,8 +23,14 @@ const allowedOrigins = [env.clientUrl, 'http://localhost:5173'];
 
 app.use(
   cors({
-    origin: allowedOrigins,
-    credentials: true
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origin not allowed by CORS'));
+    },
+    credentials: true,
   })
 );
 
@@ -37,18 +43,13 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
 });
 
 app.use('/api/auth', authLimiter);
 
 app.get('/health', (req, res) => {
-  res.json({
-    ok: true,
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    environment: env.nodeEnv
-  });
+  res.json({ ok: true, status: 'healthy', timestamp: new Date().toISOString(), environment: env.nodeEnv });
 });
 
 app.use('/api/auth', authRoutes);
@@ -64,9 +65,12 @@ const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST'],
-    credentials: true
-  }
+    credentials: true,
+  },
 });
+
+// expose io to route handlers
+app.set('io', io);
 
 socketHandler(io);
 
